@@ -15,44 +15,37 @@ class VSDataset(Dataset):
         self.image_filenames = self.data['image_path'].tolist()
         self.mask_filenames = self.data['SegmentationPath'].tolist()
 
+    def transform_volume(self, image_volume, mask_volume):
+        image_volume = image_volume.transpose(1, 2, 0)  
+        mask_volume = mask_volume.transpose(1, 2, 0)   
+        # print('before:-', image_volume.shape, mask_volume.shape)
+        transformed = self.transform(
+            image=image_volume,
+            mask=mask_volume
+        )
+        images = transformed['image']
+        masks = transformed['mask']
+        masks= masks.permute(2, 0, 1)
+        # print('after:- ',images.shape, masks.shape)
+        return images, masks.float()
+
     def __len__(self):
         return len(self.image_filenames)
 
     def __getitem__(self, idx):
         image_path = os.path.join(self.data_dir, self.image_filenames[idx])
         mask_path = os.path.join(self.data_dir, self.mask_filenames[idx])
-        print(f"Reading image: {image_path}")
-        print(f"Reading mask: {mask_path}")
 
         mask = load_nifti_as_dhw(mask_path)
         image = dicom_load(image_path, mask.shape)
-        print(image.shape, mask.shape)
+        # print(image.shape, mask.shape)
 
-        slices, _, _ = image.shape
-        image_tensor = []
-        mask_tensor = []
-
-        for i in range(slices):
-            slice_img = image[i, :, :].astype(np.uint8)
-            slice_mask = mask[i, :, :].astype(np.uint8)
-
-            if self.transform:
-                transformed = self.transform(image=slice_img, mask=slice_mask)
-                slice_img = transformed["image"]
-                slice_mask = transformed["mask"]
-            else:
-                slice_img = torch.tensor(slice_img, dtype=torch.float32).unsqueeze(0)
-                slice_mask = torch.tensor(slice_mask, dtype=torch.float32).unsqueeze(0)
-
-            image_tensor.append(slice_img)
-            mask_tensor.append(slice_mask)
-
-        image_tensor = torch.stack(image_tensor)  # (D, C, H, W)
-        mask_tensor = torch.stack(mask_tensor)    # (D, C, H, W)
-
-        # Change to (C, D, H, W)
-        image_tensor = image_tensor.permute(1, 0, 2, 3)  # (C, D, H, W)
-        mask_tensor = mask_tensor.unsqueeze(0)    # (C, D, H, W)
+        transformed_image_volume, transformed_mask_volume = self.transform_volume(image, mask)
+        
+        # # Change to (C, D, H, W)
+        image_tensor = transformed_image_volume.unsqueeze(0)  
+        mask_tensor = transformed_mask_volume.unsqueeze(0)   
+        # print(image_tensor.shape, mask_tensor.shape)
 
         # Now handle expansion or removal
         current_slices = image_tensor.shape[1]

@@ -27,8 +27,8 @@ def main():
         ToTensorV2()
     ])
 
-    masks_path = 'D:\\3dVS1\\sample_data\\Masks'
-    images_path = 'D:\\3dVS1\\sample_data\\Image'
+    # masks_path = 'D:\\3dVS1\\sample_data\\Masks'
+    # images_path = 'D:\\3dVS1\\sample_data\\Image'
 
     dataset = VSDataset(
         image_dir=r"D:\3dVS\sample_data1\Images",

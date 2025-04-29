@@ -60,12 +60,12 @@ def dicom_load(dicom_folder, target_shape=None):
                     print(f"[INFO] Transposing image_stack from {image_stack.shape} to {permuted.shape} using order {perm}")
                     image_stack = permuted
                     break
-            else:
-                raise ValueError(f"Unable to match image_stack shape {image_stack.shape} to target shape {target_shape}")
-        else:
-            print("[INFO] image_stack shape already matches target shape.")
+    #         else:
+    #             raise ValueError(f"Unable to match image_stack shape {image_stack.shape} to target shape {target_shape}")
+    #     else:
+    #         print("[INFO] image_stack shape already matches target shape.")
     
-    print(f"[INFO] Final image_stack shape: {image_stack.shape}")
+    # print(f"[INFO] Final image_stack shape: {image_stack.shape}")
     return image_stack
 
 
