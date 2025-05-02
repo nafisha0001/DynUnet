@@ -1,5 +1,6 @@
 import os
 import pydicom
+import SimpleITK as sitk
 import numpy as np
 import nibabel as nib
 from nibabel.orientations import axcodes2ornt, ornt_transform, aff2axcodes, io_orientation
@@ -86,3 +87,15 @@ def dicom_load(dicom_folder, target_shape=None):
     # processed_volume = np.stack(processed_slices, axis=0)
 
     # return processed_volume
+
+
+
+def resample_segmentation_to_image(segmentation, reference_image):
+    resampler = sitk.ResampleImageFilter()
+    resampler.SetReferenceImage(reference_image)
+    resampler.SetInterpolator(sitk.sitkNearestNeighbor)
+    resampler.SetOutputSpacing(reference_image.GetSpacing())
+    resampler.SetSize(reference_image.GetSize())
+    resampler.SetOutputDirection(reference_image.GetDirection())
+    resampler.SetOutputOrigin(reference_image.GetOrigin())
+    return resampler.Execute(segmentation)

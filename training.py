@@ -6,6 +6,7 @@ from monai.losses import DiceCELoss
 from torch.optim import Adam
 from dataset import VSDataset
 from model import DynUNet
+from torch.utils.data import Subset
 
 batch_size = 1
 num_workers = 0
@@ -30,16 +31,19 @@ def main():
     # masks_path = 'D:\\3dVS1\\sample_data\\Masks'
     # images_path = 'D:\\3dVS1\\sample_data\\Image'
 
+    data_dir= r'D:\VSdata'
+    csv_path= r"C:\Users\Acer\Desktop\vs_paths.csv"
     dataset = VSDataset(
-        image_dir=r"D:\3dVS\sample_data1\Images",
-        mask_dir=r"D:\3dVS\sample_data1\Masks",
+        csv_path= csv_path,
+        data_dir=data_dir,
         transform=slice_transform,  
-        target_slices=128            
+        target_slices=128          
     )
 
+    mini_dataset = Subset(dataset, list(range(10)))
 
     train_loader = DataLoader(
-            dataset,
+            mini_dataset,
             batch_size=batch_size,
             num_workers=num_workers,
             pin_memory=pin_memory,
@@ -57,7 +61,7 @@ def main():
         res_block=True,
     )
     
-    loss_function = DiceCELoss(to_onehot_y=True, softmax=True)
+    loss_function = DiceCELoss(to_onehot_y=False, softmax=False)
     optimizer = Adam(model.parameters(), lr=1e-4)
 
     # loss = loss_function(outputs, labels)
@@ -93,16 +97,16 @@ def main():
 
             running_loss += loss.item()
             
-            if batch_idx % 10 == 0:
-                print(f"Epoch [{epoch+1}/{num_epochs}], Step [{batch_idx+1}/{len(train_loader)}], Loss: {loss.item()}")
+            # if batch_idx % 10 == 0:
+            print(f"Epoch [{epoch+1}/{num_epochs}], Step [{batch_idx+1}/{len(train_loader)}], Loss: {loss.item()}")
 
         avg_loss = running_loss / len(train_loader)
         print(f"Epoch [{epoch+1}/{num_epochs}], Average Loss: {avg_loss}")
         
         # Save model checkpoint
-        checkpoint_path = f"model_checkpoint.pth"
-        torch.save(model.state_dict(), checkpoint_path)
-        print(f"Checkpoint saved: {checkpoint_path}")
+        # checkpoint_path = f"model_checkpoint.pth"
+        # torch.save(model.state_dict(), checkpoint_path)
+        # print(f"Checkpoint saved: {checkpoint_path}")
 
     print("Training complete!")
 
