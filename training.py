@@ -7,6 +7,7 @@ from torch.optim import Adam
 from dataset import VSDataset
 from model import DynUNet
 from torch.utils.data import Subset
+from utils.utils import custom_collate
 
 batch_size = 1
 num_workers = 0
@@ -32,7 +33,7 @@ def main():
     # images_path = 'D:\\3dVS1\\sample_data\\Image'
 
     data_dir= r'D:\VSdata'
-    csv_path= r"C:\Users\Acer\Desktop\vs_paths.csv"
+    csv_path= r"C:\Users\Acer\Desktop\vs_paths1.csv"
     dataset = VSDataset(
         csv_path= csv_path,
         data_dir=data_dir,
@@ -40,14 +41,15 @@ def main():
         target_slices=128          
     )
 
-    mini_dataset = Subset(dataset, list(range(10)))
+    # mini_dataset = Subset(dataset, list(range(10)))
 
     train_loader = DataLoader(
-            mini_dataset,
-            batch_size=batch_size,
+            dataset,
+            batch_size=2,
             num_workers=num_workers,
             pin_memory=pin_memory,
             shuffle=True,
+            collate_fn=custom_collate,
         )
 
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -68,13 +70,14 @@ def main():
     # optimizer = optim.Adam(model.parameters(), lr=0.0001)
     # scaler = torch.cuda.amp.GradScaler()
 
-    for epoch in range(num_epochs):
+    for epoch in range(1):
         model.train()
         running_loss = 0.0
         
         for batch_idx, (inputs, targets) in enumerate(train_loader):
             inputs = inputs.to(device)
             targets = targets.to(device)
+            print(inputs.shape, targets.shape)
             
             optimizer.zero_grad()
 

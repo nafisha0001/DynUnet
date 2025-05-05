@@ -1,11 +1,14 @@
 import os
 import pydicom
+import torch
 import SimpleITK as sitk
 import numpy as np
 import nibabel as nib
 from nibabel.orientations import axcodes2ornt, ornt_transform, aff2axcodes, io_orientation
 
 from utils.normalization import saveDicomAsJPEG
+
+from skimage.transform import resize
 
 def load_nifti_as_dhw(path):
     nii = nib.load(path)
@@ -99,3 +102,134 @@ def resample_segmentation_to_image(segmentation, reference_image):
     resampler.SetOutputDirection(reference_image.GetDirection())
     resampler.SetOutputOrigin(reference_image.GetOrigin())
     return resampler.Execute(segmentation)
+
+
+def nearest_multiple_of_32(n):
+    return ((n + 31) // 32) * 32
+
+def custom_collate(batch):
+    max_slices = max(x.shape[1] for x, y in batch) 
+    max_depth = nearest_multiple_of_32(max_slices) 
+    
+    newImageVolume = []
+    newMaskVolume = []
+
+    for image_tensor, mask_tensor in batch:
+        current_slices = image_tensor.shape[1]
+
+        if current_slices < max_depth:
+            # Duplicate labeled slices
+            labeled_slices = []
+            for i in range(current_slices):
+                labeled_slices.append(i)
+
+            while current_slices < max_depth:
+                for i in labeled_slices:
+                    if current_slices < max_depth:
+                        image_tensor = torch.cat((image_tensor, image_tensor[:, i:i+1, :, :]), dim=1)
+                        mask_tensor = torch.cat((mask_tensor, mask_tensor[:, i:i+1, :, :]), dim=1)
+                        current_slices += 1
+
+        # Append to batch
+        newImageVolume.append(image_tensor)
+        newMaskVolume.append(mask_tensor)
+
+    # Stack batch tensors
+    newImageVolume = torch.stack(newImageVolume, dim=0)
+    newMaskVolume = torch.stack(newMaskVolume, dim=0)
+
+    return newImageVolume, newMaskVolume
+
+
+
+
+
+#  Resampling code
+
+
+target_spacing= [1.0, 1.0, 1.0]  # Target spacing in mm (x, y, z)
+
+def load_spacing(image_obj):
+    spacing= image_obj.GetSpacing()
+    spacing= list(spacing)
+    return [spacing[2], spacing[1], spacing[0]]
+
+# def standardize_layout(data):
+#     if len(data.shape)==3:
+#         data= np.expand_dims(data, 3)
+#     return np.transpose(data, (3, 2, 1, 0))
+
+def resample_pair(image, label, spacing):
+    shape =calculate_new_shape(spacing, image.shape[1:])
+    if check_anisotrophy(spacing):
+        image = resample_anisotrophic_image(image, shape)
+        if label is not None:
+            label = resample_anisotrophic_label(label, shape)
+    else:
+        image = resample_regular_image(image, shape)
+        if label is not None:
+            label = resample_regular_label(label, shape)
+    image = image.astype(np.float32)
+    if label is not None:
+        label = label.astype(np.uint8)
+    return image, label
+
+def calculate_new_shape(spacing, shape):
+    spacing_ratio = np.array(spacing) / np.array(target_spacing)
+    new_shape = (spacing_ratio * np.array(shape)).astype(int).tolist()
+    return new_shape
+
+def check_anisotrophy(spacing):
+    def check(spacing):
+        return np.max(spacing) / np.min(spacing) >= 3
+    return check(spacing) or check(target_spacing)
+
+def resample_anisotrophic_image(image, shape):
+    resized_channels = []
+    for image_c in image:
+        resized = [resize_fn(i, shape[1:], 3, "edge") for i in image_c]
+        resized = np.stack(resized, axis=0)
+        resized = resize_fn(resized, shape, 0, "constant")
+        resized_channels.append(resized)
+    resized = np.stack(resized_channels, axis=0)
+    return resized
+
+def resample_regular_image(image, shape):
+    resized_channels = []
+    for image_c in image:
+        resized_channels.append(resize_fn(image_c, shape, 3, "edge"))
+    resized = np.stack(resized_channels, axis=0)
+    return resized
+
+def resample_anisotrophic_label(label, shape):
+    depth = label.shape[1]
+    reshaped = np.zeros(shape, dtype=np.uint8)
+    shape_2d = shape[1:]
+    reshaped_2d = np.zeros((depth, *shape_2d), dtype=np.uint8)
+    n_class = np.max(label)
+    for class_ in range(1, n_class + 1):
+        for depth_ in range(depth):
+            mask = label[0, depth_] == class_
+            resized_2d = resize_fn(mask.astype(float), shape_2d, 1, "edge")
+            reshaped_2d[depth_][resized_2d >= 0.5] = class_
+
+    for class_ in range(1, n_class + 1):
+        mask = reshaped_2d == class_
+        resized = resize_fn(mask.astype(float), shape, 0, "constant")
+        reshaped[resized >= 0.5] = class_
+    reshaped = np.expand_dims(reshaped, 0)
+    return reshaped
+
+def resample_regular_label(label, shape):
+    reshaped = np.zeros(shape, dtype=np.uint8)
+    n_class = np.max(label)
+    for class_ in range(1, n_class + 1):
+        mask = label[0] == class_
+        resized = resize_fn(mask.astype(float), shape, 1, "edge")
+        reshaped[resized >= 0.5] = class_
+    reshaped = np.expand_dims(reshaped, 0)
+    return reshaped
+
+
+def resize_fn(image, shape, order, mode):
+    return resize(image, shape, order=order, mode=mode, cval=0, clip=True, anti_aliasing=False)

@@ -54,58 +54,8 @@ class VSDataset(Dataset):
         if self.transform:
             transformed_image_volume, transformed_mask_volume = self.transform_volume(image, mask)
         
-        # # Change to (C, D, H, W)
+        # Change to (C, D, H, W)
         image_tensor = transformed_image_volume.unsqueeze(0)  
         mask_tensor = transformed_mask_volume.unsqueeze(0)
-        # # print(image_tensor.shape, mask_tensor.shape)
-
-        # Now handle expansion or removal
-        current_slices = image_tensor.shape[1]
-
-        if self.target_slices:
-            if current_slices < self.target_slices:
-                # --- Duplicate labeled slices ---
-                # required_slices = self.target_slices - current_slices
-                labeled_slices = []
-                for i in range(current_slices):
-                    unique_vals = torch.unique(mask_tensor[0, i, :, :])
-                    if 0 in unique_vals and 1 in unique_vals:
-                        labeled_slices.append(i)
-
-                if len(labeled_slices) == 0:
-                    raise ValueError("No labeled slices (with both 0 and 1) found. Cannot duplicate.")
-
-                while current_slices < self.target_slices:
-                    for i in labeled_slices:
-                        if current_slices < self.target_slices:
-                            image_tensor = torch.cat((image_tensor, image_tensor[:, i:i+1, :, :]), dim=1)
-                            mask_tensor = torch.cat((mask_tensor, mask_tensor[:, i:i+1, :, :]), dim=1)
-                            current_slices += 1
-
-            elif current_slices > self.target_slices:
-                # --- Remove unlabeled slices ---
-                unlabeled_slices = []
-                for i in range(current_slices):
-                    unique_vals = torch.unique(mask_tensor[0, i, :, :])
-                    if torch.all(unique_vals == 0):
-                        unlabeled_slices.append(i)
-
-                if len(unlabeled_slices) == 0:
-                    raise ValueError("No unlabeled slices found for removal.")
-
-                slices_to_keep = list(range(current_slices))
-
-                # Remove unlabeled slices until reaching target
-                for i in unlabeled_slices:
-                    if len(slices_to_keep) > self.target_slices:
-                        slices_to_keep.remove(i)
-
-                # After removal, crop
-                image_tensor = image_tensor[:, slices_to_keep, :, :]
-                mask_tensor = mask_tensor[:, slices_to_keep, :, :]
-
-                # Final safety check
-                if image_tensor.shape[1] != self.target_slices:
-                    raise ValueError(f"After removal, slice count {image_tensor.shape[1]} not equal to target {self.target_slices}.")
-
+        
         return image_tensor, mask_tensor
