@@ -154,13 +154,8 @@ def load_spacing(image_obj):
     spacing= list(spacing)
     return [spacing[2], spacing[1], spacing[0]]
 
-# def standardize_layout(data):
-#     if len(data.shape)==3:
-#         data= np.expand_dims(data, 3)
-#     return np.transpose(data, (3, 2, 1, 0))
-
 def resample_pair(image, label, spacing):
-    shape =calculate_new_shape(spacing, image.shape[1:])
+    shape = calculate_new_shape(spacing, image.shape)
     if check_anisotrophy(spacing):
         image = resample_anisotrophic_image(image, shape)
         if label is not None:
@@ -182,34 +177,24 @@ def calculate_new_shape(spacing, shape):
 def check_anisotrophy(spacing):
     def check(spacing):
         return np.max(spacing) / np.min(spacing) >= 3
+
     return check(spacing) or check(target_spacing)
 
 def resample_anisotrophic_image(image, shape):
-    resized_channels = []
-    for image_c in image:
-        resized = [resize_fn(i, shape[1:], 3, "edge") for i in image_c]
-        resized = np.stack(resized, axis=0)
-        resized = resize_fn(resized, shape, 0, "constant")
-        resized_channels.append(resized)
-    resized = np.stack(resized_channels, axis=0)
-    return resized
-
-def resample_regular_image(image, shape):
-    resized_channels = []
-    for image_c in image:
-        resized_channels.append(resize_fn(image_c, shape, 3, "edge"))
-    resized = np.stack(resized_channels, axis=0)
+    resized = [resize_fn(i, shape[1:], 3, "edge") for i in image]
+    resized = np.stack(resized, axis=0)
+    resized = resize_fn(resized, shape, 0, "constant")
     return resized
 
 def resample_anisotrophic_label(label, shape):
-    depth = label.shape[1]
+    depth = label.shape[0]
     reshaped = np.zeros(shape, dtype=np.uint8)
     shape_2d = shape[1:]
     reshaped_2d = np.zeros((depth, *shape_2d), dtype=np.uint8)
     n_class = np.max(label)
     for class_ in range(1, n_class + 1):
         for depth_ in range(depth):
-            mask = label[0, depth_] == class_
+            mask = label[depth_] == class_
             resized_2d = resize_fn(mask.astype(float), shape_2d, 1, "edge")
             reshaped_2d[depth_][resized_2d >= 0.5] = class_
 
@@ -217,19 +202,20 @@ def resample_anisotrophic_label(label, shape):
         mask = reshaped_2d == class_
         resized = resize_fn(mask.astype(float), shape, 0, "constant")
         reshaped[resized >= 0.5] = class_
-    reshaped = np.expand_dims(reshaped, 0)
     return reshaped
+
+def resample_regular_image(image, shape):
+    resized = (resize_fn(image, shape, 3, "edge"))
+    return resized
 
 def resample_regular_label(label, shape):
     reshaped = np.zeros(shape, dtype=np.uint8)
     n_class = np.max(label)
     for class_ in range(1, n_class + 1):
-        mask = label[0] == class_
+        mask = label == class_
         resized = resize_fn(mask.astype(float), shape, 1, "edge")
         reshaped[resized >= 0.5] = class_
-    reshaped = np.expand_dims(reshaped, 0)
     return reshaped
-
 
 def resize_fn(image, shape, order, mode):
     return resize(image, shape, order=order, mode=mode, cval=0, clip=True, anti_aliasing=False)

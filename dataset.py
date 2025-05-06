@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import SimpleITK as sitk
 from torch.utils.data import Dataset
-from utils.utils import resample_segmentation_to_image
+from utils.utils import resample_segmentation_to_image, load_spacing, resample_pair
 
 reader = sitk.ImageSeriesReader()
 
@@ -50,6 +50,17 @@ class VSDataset(Dataset):
 
         image= sitk.GetArrayFromImage(reference_image)
         mask= sitk.GetArrayFromImage(segmentation_resampled)
+
+        image= image.astype(np.float32)
+        mask= mask.astype(np.uint8)
+
+        print("Before resamplimg:- ",image.shape, mask.shape)
+
+        spacing = load_spacing(reference_image)
+        image,mask= resample_pair(image, mask, spacing)
+
+        print("Spacing:- ",spacing)
+        print("After resampling:- ",image.shape, mask.shape)
 
         if self.transform:
             transformed_image_volume, transformed_mask_volume = self.transform_volume(image, mask)
