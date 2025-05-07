@@ -9,6 +9,9 @@ from model import DynUNet
 from torch.utils.data import Subset
 from utils.utils import custom_collate
 
+import SimpleITK as sitk
+sitk.ProcessObject_SetGlobalWarningDisplay(False)
+
 batch_size = 1
 num_workers = 0
 pin_memory = False
@@ -19,7 +22,6 @@ def main():
 
     image_size = 128
 
-
     slice_transform = A.Compose([
         A.Resize(image_size, image_size),
         A.Rotate(limit=35, p=1.0),
@@ -28,9 +30,6 @@ def main():
         A.Normalize(mean=0.0, std=1.0, max_pixel_value=255.0),
         ToTensorV2()
     ])
-
-    # masks_path = 'D:\\3dVS1\\sample_data\\Masks'
-    # images_path = 'D:\\3dVS1\\sample_data\\Image'
 
     data_dir= r'D:\VSdata'
     csv_path= r"C:\Users\Acer\Desktop\vs_paths1.csv"
@@ -41,7 +40,6 @@ def main():
         target_slices=128          
     )
 
-    # mini_dataset = Subset(dataset, list(range(10)))
 
     train_loader = DataLoader(
             dataset,

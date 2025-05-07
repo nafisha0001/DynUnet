@@ -107,10 +107,46 @@ def resample_segmentation_to_image(segmentation, reference_image):
 def nearest_multiple_of_32(n):
     return ((n + 31) // 32) * 32
 
+# def custom_collate(batch):
+#     max_slices = max(x.shape[1] for x, y in batch) 
+#     max_depth = nearest_multiple_of_32(max_slices) 
+    
+#     newImageVolume = []
+#     newMaskVolume = []
+
+#     for image_tensor, mask_tensor in batch:
+#         current_slices = image_tensor.shape[1]
+
+#         if current_slices < max_depth:
+#             # Duplicate labeled slices
+#             labeled_slices = []
+#             for i in range(current_slices):
+#                 labeled_slices.append(i)
+
+#             while current_slices < max_depth:
+#                 for i in labeled_slices:
+#                     if current_slices < max_depth:
+#                         image_tensor = torch.cat((image_tensor, image_tensor[:, i:i+1, :, :]), dim=1)
+#                         mask_tensor = torch.cat((mask_tensor, mask_tensor[:, i:i+1, :, :]), dim=1)
+#                         current_slices += 1
+
+#         # Append to batch
+#         newImageVolume.append(image_tensor)
+#         newMaskVolume.append(mask_tensor)
+
+#     # Stack batch tensors
+#     newImageVolume = torch.stack(newImageVolume, dim=0)
+#     newMaskVolume = torch.stack(newMaskVolume, dim=0)
+
+#     return newImageVolume, newMaskVolume
+
+
+
+# blank Slices:
 def custom_collate(batch):
     max_slices = max(x.shape[1] for x, y in batch) 
     max_depth = nearest_multiple_of_32(max_slices) 
-    
+
     newImageVolume = []
     newMaskVolume = []
 
@@ -118,17 +154,16 @@ def custom_collate(batch):
         current_slices = image_tensor.shape[1]
 
         if current_slices < max_depth:
-            # Duplicate labeled slices
-            labeled_slices = []
-            for i in range(current_slices):
-                labeled_slices.append(i)
+            # Calculate number of blank slices needed
+            pad_slices = max_depth - current_slices
 
-            while current_slices < max_depth:
-                for i in labeled_slices:
-                    if current_slices < max_depth:
-                        image_tensor = torch.cat((image_tensor, image_tensor[:, i:i+1, :, :]), dim=1)
-                        mask_tensor = torch.cat((mask_tensor, mask_tensor[:, i:i+1, :, :]), dim=1)
-                        current_slices += 1
+            # Create blank image and mask slices
+            blank_image = torch.zeros((image_tensor.shape[0], pad_slices, image_tensor.shape[2], image_tensor.shape[3]), dtype=image_tensor.dtype)
+            blank_mask = torch.zeros((mask_tensor.shape[0], pad_slices, mask_tensor.shape[2], mask_tensor.shape[3]), dtype=mask_tensor.dtype)
+
+            # Pad with blank slices
+            image_tensor = torch.cat((image_tensor, blank_image), dim=1)
+            mask_tensor = torch.cat((mask_tensor, blank_mask), dim=1)
 
         # Append to batch
         newImageVolume.append(image_tensor)

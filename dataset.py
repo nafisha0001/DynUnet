@@ -54,16 +54,16 @@ class VSDataset(Dataset):
         image= image.astype(np.float32)
         mask= mask.astype(np.uint8)
 
-        print("Before resamplimg:- ",image.shape, mask.shape)
+        # print("Before resamplimg:- ",image.shape, mask.shape)
 
         spacing = load_spacing(reference_image)
-        image,mask= resample_pair(image, mask, spacing)
+        resampled_image,resampled_mask= resample_pair(image, mask, spacing)
 
-        print("Spacing:- ",spacing)
-        print("After resampling:- ",image.shape, mask.shape)
+        # print("Spacing:- ",spacing)
+        # print("After resampling:- ",image.shape, mask.shape)
 
         if self.transform:
-            transformed_image_volume, transformed_mask_volume = self.transform_volume(image, mask)
+            transformed_image_volume, transformed_mask_volume = self.transform_volume(resampled_image, resampled_mask)
         
         # Change to (C, D, H, W)
         image_tensor = transformed_image_volume.unsqueeze(0)  
