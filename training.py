@@ -3,11 +3,14 @@ import albumentations as A
 from albumentations.pytorch import ToTensorV2
 from torch.utils.data import DataLoader
 from monai.losses import DiceCELoss
+from monai.losses import DiceLoss
 from torch.optim import Adam
 from dataset import VSDataset
 from model import DynUNet
-from torch.utils.data import Subset
+from loss import DiceWeightedBCELoss
+# from torch.utils.data import Subset
 from utils.utils import custom_collate
+from loss import DiceWeightedBCELoss
 
 import SimpleITK as sitk
 sitk.ProcessObject_SetGlobalWarningDisplay(False)
@@ -61,9 +64,18 @@ def main():
         res_block=True,
     )
     
-    loss_function = DiceCELoss(to_onehot_y=False, softmax=False)
-    optimizer = Adam(model.parameters(), lr=1e-4)
+    loss_fn = DiceLoss(to_onehot_y=False, softmax=False, sigmoid=True)
+    # loss_function = DiceCELoss(
+    #     include_background=True,  # include class 0 (background) in Dice
+    #     to_onehot_y=False,        # no need to one-hot encode masks for binary
+    #     softmax=False,            # assume logits (no softmax) for binary
+    #     sigmoid=True              # apply sigmoid for binary classification
+    # )
 
+    # loss_function = DiceWeightedBCELoss()
+    optimizer = Adam(model.parameters(), lr=1e-4)
+    pos_weight = torch.tensor([3.0]).to(device)
+    loss_function = DiceWeightedBCELoss(dice_weight=1.0, bce_weight=1.0, pos_weight=pos_weight)
     # loss = loss_function(outputs, labels)
     # optimizer = optim.Adam(model.parameters(), lr=0.0001)
     # scaler = torch.cuda.amp.GradScaler()
@@ -71,6 +83,7 @@ def main():
     for epoch in range(1):
         model.train()
         running_loss = 0.0
+        running_dice_loss = 0.0
         
         for batch_idx, (inputs, targets) in enumerate(train_loader):
             inputs = inputs.to(device)
@@ -80,8 +93,8 @@ def main():
             optimizer.zero_grad()
 
             outputs = model(inputs)
-            outputs = torch.sigmoid(outputs)
-            # loss = criterion(outputs, targets)
+            # outputs = torch.sigmoid(outputs)
+            dice_loss = loss_fn(outputs, targets)
             loss = loss_function(outputs, targets)
             loss.backward()
             optimizer.step()
@@ -97,12 +110,16 @@ def main():
             # scaler.update()
 
             running_loss += loss.item()
+            running_dice_loss += dice_loss.item()
             
             # if batch_idx % 10 == 0:
             print(f"Epoch [{epoch+1}/{num_epochs}], Step [{batch_idx+1}/{len(train_loader)}], Loss: {loss.item()}")
+            print(f"Epoch [{epoch+1}/{num_epochs}], Step [{batch_idx+1}/{len(train_loader)}], Dice Loss: {dice_loss.item()}")
 
         avg_loss = running_loss / len(train_loader)
+        avg_dice_loss = running_dice_loss / len(train_loader)
         print(f"Epoch [{epoch+1}/{num_epochs}], Average Loss: {avg_loss}")
+        print(f"Epoch [{epoch+1}/{num_epochs}], Average Dice Loss: {avg_dice_loss}")
         
         # Save model checkpoint
         # checkpoint_path = f"model_checkpoint.pth"
