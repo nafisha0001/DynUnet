@@ -120,7 +120,8 @@ class DynUNet(nn.Module):
         self.norm_name = norm_name
         self.dropout = dropout
         self.conv_block = UnetResBlock if res_block else UnetBasicBlock
-        self.filters = [min(2 ** (5 + i), 320 if spatial_dims == 3 else 512) for i in range(len(strides))]
+        # self.filters = [min(2 ** (5 + i), 320 if spatial_dims == 3 else 512) for i in range(len(strides))]
+        self.filters = [32, 64, 128, 256, 512, 1024]
         self.input_block = self.get_input_block()
         self.downsamples = self.get_downsamples()
         self.bottleneck = self.get_bottleneck()
