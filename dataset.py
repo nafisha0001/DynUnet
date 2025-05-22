@@ -54,13 +54,13 @@ class VSDataset(Dataset):
         image= image.astype(np.float32)
         mask= mask.astype(np.uint8)
 
-        # print("Before resamplimg:- ",image.shape, mask.shape)
+        print("Before resamplimg:- ",image.shape, mask.shape)
 
         spacing = load_spacing(reference_image)
         resampled_image,resampled_mask= resample_pair(image, mask, spacing)
 
         # print("Spacing:- ",spacing)
-        # print("After resampling:- ",image.shape, mask.shape)
+        print("After resampling:- ",image.shape, mask.shape)
 
         if self.transform:
             transformed_image_volume, transformed_mask_volume = self.transform_volume(resampled_image, resampled_mask)
