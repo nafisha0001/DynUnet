@@ -9,30 +9,12 @@ from utils.utils import resample_segmentation_to_image, load_spacing, resample_p
 reader = sitk.ImageSeriesReader()
 
 class VSDataset(Dataset):
-    def __init__(self, csv_path, data_dir, transform=None, target_slices=None):
+    def __init__(self, csv_path, data_dir, transform=None):
         self.data = pd.read_csv(csv_path)
         self.data_dir = data_dir
         self.transform = transform
-        self.target_slices = target_slices
         self.image_filenames = self.data['image_path'].tolist()
         self.mask_filenames = self.data['SegmentationPath'].tolist()
-
-    def transform_volume(self, image_volume, mask_volume):
-        image_volume = image_volume.transpose(2, 1, 0)  
-        mask_volume = mask_volume.transpose(2, 1, 0)   
-        # print('before:-', image_volume.shape, mask_volume.shape)
-        transformed = self.transform(
-            image=image_volume.astype(np.float32),  
-            mask=mask_volume.astype(np.float32)
-        )
-        images = transformed['image']
-        masks = transformed['mask']
-        
-        images = images.permute(0, 2, 1)
-        masks= masks.permute(2, 1, 0)
-
-        # print('after:- ',images.shape, masks.shape)
-        return images, masks.float()
 
     def __len__(self):
         return len(self.image_filenames)
@@ -41,32 +23,33 @@ class VSDataset(Dataset):
         image_path = os.path.join(self.data_dir, self.image_filenames[idx])
         mask_path = os.path.join(self.data_dir, self.mask_filenames[idx])
 
+        # Read DICOM image series
         dicom_series = reader.GetGDCMSeriesFileNames(image_path)
         reader.SetFileNames(dicom_series)
         reference_image = reader.Execute()
 
+        # Read and resample mask
         segmentation_image = sitk.ReadImage(mask_path)
         segmentation_resampled = resample_segmentation_to_image(segmentation_image, reference_image)
 
-        image= sitk.GetArrayFromImage(reference_image)
-        mask= sitk.GetArrayFromImage(segmentation_resampled)
+        # Convert to numpy arrays
+        image = sitk.GetArrayFromImage(reference_image).astype(np.float32)  # (D, H, W)
+        mask = sitk.GetArrayFromImage(segmentation_resampled).astype(np.uint8)
 
-        image= image.astype(np.float32)
-        mask= mask.astype(np.uint8)
-
-        print("Before resamplimg:- ",image.shape, mask.shape)
-
+        # Resample to fixed spacing
         spacing = load_spacing(reference_image)
-        resampled_image,resampled_mask= resample_pair(image, mask, spacing)
+        image, mask = resample_pair(image, mask, spacing)
 
-        # print("Spacing:- ",spacing)
-        print("After resampling:- ",image.shape, mask.shape)
+        # Add channel dimension to image and mask → (C=1, D, H, W)
+        sample = {
+            "image": image[np.newaxis, ...],  # (1, D, H, W)
+            "mask": mask[np.newaxis, ...]     # (1, D, H, W)
+        }
 
+        # print(f"Image shape: {sample['image'].shape}, Mask shape: {sample['mask'].shape}")
+
+        # Apply 3D transform
         if self.transform:
-            transformed_image_volume, transformed_mask_volume = self.transform_volume(resampled_image, resampled_mask)
-        
-        # Change to (C, D, H, W)
-        image_tensor = transformed_image_volume.unsqueeze(0)  
-        mask_tensor = transformed_mask_volume.unsqueeze(0)
-        
-        return image_tensor, mask_tensor
+            sample = self.transform(sample)
+
+        return sample["image"], sample["mask"]

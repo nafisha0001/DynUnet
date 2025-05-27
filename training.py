@@ -8,10 +8,15 @@ from torch.optim import Adam
 from dataset import VSDataset
 from model import DynUNet
 from loss import DiceWeightedBCELoss
-# from torch.utils.data import Subset
 from utils.utils import custom_collate
 from loss import DiceWeightedBCELoss
 from torch.optim.lr_scheduler import StepLR  
+from monai.transforms import (
+    Compose, NormalizeIntensityd, RandBiasFieldd,
+    RandFlipd, RandRotate90d, RandGaussianNoised, RandZoomd,
+    RandAdjustContrastd, RandShiftIntensityd, RandGaussianSmoothd,
+    ResizeWithPadOrCropd, ToTensord
+)
 
 import SimpleITK as sitk
 sitk.ProcessObject_SetGlobalWarningDisplay(False)
@@ -24,15 +29,27 @@ num_epochs = 10
 
 def main():
 
-    image_size = 128
+    image_size = (128, 128, 128)
 
-    slice_transform = A.Compose([
-        A.Resize(image_size, image_size),
-        A.Rotate(limit=35, p=1.0),
-        A.HorizontalFlip(p=0.5),
-        A.VerticalFlip(p=0.1),
-        A.Normalize(mean=0.0, std=1.0, max_pixel_value=255.0),
-        ToTensorV2()
+    transform = Compose([
+        NormalizeIntensityd(keys=["image"], nonzero=True, channel_wise=True),  # Z-normalization
+        
+        # Spatial augmentations
+        RandZoomd(keys=["image", "mask"], min_zoom=0.9, max_zoom=1.1, prob=0.5, keep_size=True),
+        RandFlipd(keys=["image", "mask"], spatial_axis=0, prob=0.3),
+        RandFlipd(keys=["image", "mask"], spatial_axis=1, prob=0.3),
+        RandRotate90d(keys=["image", "mask"], prob=0.3, max_k=3, spatial_axes= (0,1)),
+
+        # Intensity augmentations
+        RandGaussianNoised(keys=["image"], prob=0.5, mean=0.0, std=0.1),
+        RandBiasFieldd(keys=["image"], prob=0.3, coeff_range=(0.1, 0.3), degree=3),
+        RandGaussianSmoothd(keys=["image"], prob=0.5, sigma_x=(0.5, 1.5), sigma_y=(0.5, 1.5), sigma_z=(0.5, 1.5)),
+        RandAdjustContrastd(keys=["image"], prob=0.5, gamma=(0.7, 1.5)),
+        RandShiftIntensityd(keys=["image"], offsets=0.1, prob=0.5),  
+        
+        # Resize or pad/crop to final size
+        ResizeWithPadOrCropd(keys=["image", "mask"], spatial_size=image_size, mode='constant'),
+        ToTensord(keys=["image", "mask"]),
     ])
 
     data_dir= r'D:\VSdata'
@@ -40,8 +57,7 @@ def main():
     dataset = VSDataset(
         csv_path= csv_path,
         data_dir=data_dir,
-        transform=slice_transform,  
-        target_slices=128          
+        transform=transform,        
     )
 
 
@@ -51,7 +67,6 @@ def main():
             num_workers=num_workers,
             pin_memory=pin_memory,
             shuffle=True,
-            collate_fn=custom_collate,
         )
 
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -79,7 +94,10 @@ def main():
     loss_function = DiceWeightedBCELoss(dice_weight=1.0, bce_weight=1.0, pos_weight=pos_weight)
     # loss = loss_function(outputs, labels)
     scaler = torch.cuda.amp.GradScaler()
-    scheduler = StepLR(optimizer, step_size=10, gamma=0.5) 
+    # OneCycleLR - this schedular can also be considered
+    # scheduler = OneCycleLR(optimizer, max_lr=1e-3, steps_per_epoch=len(train_loader), epochs=num_epochs)
+
+    # scheduler = StepLR(optimizer, step_size=10, gamma=0.5) 
 
     for epoch in range(1):
         model.train()
@@ -123,7 +141,7 @@ def main():
         print(f"Epoch [{epoch+1}/{num_epochs}], Average Loss: {avg_loss}")
         print(f"Epoch [{epoch+1}/{num_epochs}], Average Dice Loss: {avg_dice_loss}")
 
-        scheduler.step()
+        # scheduler.step()
         
         # Save model checkpoint
         checkpoint_path = f"model_checkpoint.pth"
